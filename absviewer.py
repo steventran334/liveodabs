@@ -63,19 +63,20 @@ def parse_wavelengths(text: str):
 def trace_at(wl, A, target, half_width):
     """Absorbance vs. frame at one wavelength.
     half_width == 0 -> nearest single pixel (same as the spectro.m OD boxes).
-    half_width  > 0 -> mean of all pixels within target +/- half_width nm."""
-    if half_width <= 0:
-        i = int(np.argmin(np.abs(wl - target)))
-        return A[:, i], f"{wl[i]:.1f} nm", f"A_{wl[i]:.2f}nm"
+    half_width  > 0 -> mean of all pixels within target +/- half_width nm.
+    Labels use the wavelength the user typed (e.g. "600 nm"); the actual
+    pixel wavelength(s) used are returned separately as `note`."""
+    i = int(np.argmin(np.abs(wl - target)))
     sel = np.abs(wl - target) <= half_width
-    if not sel.any():
-        i = int(np.argmin(np.abs(wl - target)))
-        return A[:, i], f"{wl[i]:.1f} nm", f"A_{wl[i]:.2f}nm"
+    if half_width <= 0 or not sel.any():
+        note = f"{target:g} nm -> pixel at {wl[i]:.3f} nm"
+        return A[:, i], f"{target:g} nm", f"A_{target:g}nm", note
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)  # all-NaN rows
         y = np.nanmean(A[:, sel], axis=1)
-    lab = f"{target:g} \u00b1 {half_width:g} nm"
-    return y, lab, f"A_{target:g}nm_pm{half_width:g}"
+    note = (f"{target:g} \u00b1 {half_width:g} nm -> mean of {int(sel.sum())} pixels "
+            f"({wl[sel].min():.3f}-{wl[sel].max():.3f} nm)")
+    return y, f"{target:g} \u00b1 {half_width:g} nm", f"A_{target:g}nm_pm{half_width:g}", note
 
 
 def fig_to_svg(fig) -> bytes:
@@ -192,11 +193,12 @@ st.pyplot(fig1)
 # ----------------------------------------------------------------------------
 # Time plot
 # ----------------------------------------------------------------------------
-traces = []
+traces, notes = [], []
 fig2, ax2 = plt.subplots(figsize=(9, 3.6))
 for w in targets:
-    y, lab, col = trace_at(wl, A, w, half)
+    y, lab, col, note = trace_at(wl, A, w, half)
     traces.append((col, y))
+    notes.append(note)
     ax2.plot(t, y, marker="o", ms=2.5, lw=1, label=lab)
 ax2.axvline(t[k], color="0.4", ls="--", lw=1)
 ax2.set_xlabel("Elapsed time (s)")
@@ -206,6 +208,8 @@ if targets:
     ax2.legend(loc="best", frameon=False, fontsize=9)
 ax2.grid(alpha=0.25)
 st.pyplot(fig2)
+if notes:
+    st.caption("Detector pixels used: " + "; ".join(notes))
 
 # ----------------------------------------------------------------------------
 # Downloads
